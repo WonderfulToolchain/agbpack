@@ -1,0 +1,3 @@
+[submodule "vendor/apultra"]
+	path = vendor/apultra
+	url = https://github.com/emmanuel-marty/apultra

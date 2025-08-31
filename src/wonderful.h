@@ -1,0 +1,1 @@
+/* Stub for wf-bin2c */
