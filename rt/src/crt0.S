@@ -151,7 +151,7 @@ _extract:
     bne         depack_move
     @ If bit 31 set, use decompression
     tst         r2, #(1 << 31)
-    blne        depack
+    bne         depack
     @ If bit 29 set, use LZSS VRAM decompression
     tst         r2, #(1 << 29)
     swine       18 << 16

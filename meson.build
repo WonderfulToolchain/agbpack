@@ -1,4 +1,4 @@
-project('agbpack', 'c', default_options: 'c_std=gnu23')
+project('agbpack', 'c', default_options: 'c_std=gnu17,gnu11')
 
 executable('agbpack', [
     'rt/out/crt0_multiboot_bin.c',

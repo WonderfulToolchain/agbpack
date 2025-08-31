@@ -194,7 +194,7 @@ static void append_try_compress_section(pack_state_t *state, const void *source,
             packed = checked_malloc(packed_buffer_size);
             result = apultra_compress(source, packed, length, packed_buffer_size, 0, window_size, 0, NULL, NULL);
         }
-        if (result >= 0) {
+        if (result >= 0 && result < length) {
             if (compress_mode == COMPRESS_MODE_VRAM_COPY && cue_lzss_path == NULL) {
                 if (!(length & 3)) {
                     fprintf(stderr, "VRAM section not aligned to 4!\n");
@@ -328,6 +328,10 @@ int main(int argc, char **argv) {
         if (!phdr->memsz) {
             if (verbose) printf("Skipping empty program header %d\n", i);
             phdr->type = ELF_PT_PROCESSED;
+        }
+        if (phdr->filesz > phdr->memsz) {
+            fprintf(stderr, "Program header %d not supported - filesz > memsz > 0", i);
+            exit(1);
         }
 
         if (phdr->filesz && !address_supports_8bit_writes(phdr->paddr)) {
