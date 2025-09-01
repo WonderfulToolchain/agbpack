@@ -14,7 +14,7 @@
 #include "crt0_multiboot_bin.h"
 #include "crt0_rom_bin.h"
 
-#define VERSION "0.2.0"
+#define VERSION "0.3.0"
 
 #define AGB_EWRAM_START 0x02000000
 #define AGB_EWRAM_END   0x0203FFFF
@@ -107,11 +107,11 @@ static void write_file(const char *filename, const void *buffer, size_t length) 
 
 static void print_help(int argc, char **argv) {
     printf("Usage: %s [-0hv] [-L <path>] <input> <output>\n\n", argc && argv[0] ? argv[0] : "agbpack");
-    printf("\t-0         Disable compression.\n");
-    printf("\t-L <path>  Use LZSS compression for VRAM data via external nnpack-lzss.\n");
-    printf("\t-h         Print help information.\n");
-    printf("\t-V         Print version information.\n");
-    printf("\t-v         Enable verbose logging.\n");
+    printf("  -0         Disable compression.\n");
+    printf("  -L <path>  Use LZSS compression for VRAM data via external nnpack-lzss.\n");
+    printf("  -h         Print help information.\n");
+    printf("  -V         Print version information.\n");
+    printf("  -v         Enable verbose logging.\n");
 }
 
 static void print_version(void) {
