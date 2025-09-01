@@ -139,12 +139,21 @@ typedef struct {
     copy_entry_t copy_entries[MAX_ENTRIES];
     int entries_count;
 } pack_state_t;
+                
+static void checked_increment_entries_count(pack_state_t *state) {
+    state->entries_count++;
+    if (state->entries_count >= MAX_ENTRIES) {
+        fprintf(stderr, "Too many sections!\n");
+        exit(1);
+    }
+}
 
-// IME is guaranteed to be zero
+
 #define BIOS_MODE_COPY 0
 #define BIOS_MODE_FILL (1 << 24)
 #define BIOS_UNIT_HALFWORDS 0
 #define BIOS_UNIT_WORDS (1 << 26)
+// IME is guaranteed to be zero
 #define ZERO_FILL_ADDRESS 0x04000208
 
 static void append_bios_copy_section(pack_state_t *state, const void *source, uint32_t destination, uint32_t length, bool fill) {
@@ -174,7 +183,7 @@ static void append_bios_copy_section(pack_state_t *state, const void *source, ui
         state->copy_entries[state->entries_count].length = orig_length;
     }
 
-    state->entries_count++;
+    checked_increment_entries_count(state);
 }
 
 // Decompress data directly
@@ -209,6 +218,7 @@ static void append_try_compress_section(pack_state_t *state, const void *source,
             result = apultra_compress(source, packed, length, packed_buffer_size, 0, window_size, 0, NULL, NULL);
         }
         if (result >= 0 && result < length) {
+            if (result > 0 && verbose) printf("-> Compressed %d -> %d bytes\n", length, result);
             if (compress_mode == COMPRESS_MODE_VRAM_COPY && cue_lzss_path == NULL) {
                 if (!(length & 3)) {
                     fprintf(stderr, "VRAM section not aligned to 4!\n");
@@ -224,12 +234,12 @@ static void append_try_compress_section(pack_state_t *state, const void *source,
                 state->copy_entries[state->entries_count].length = result;
                 state->copy_entries[state->entries_count].managed = true;
                 state->copy_entries[state->entries_count].reserve_at_end = length;
-                state->entries_count++;
+                checked_increment_entries_count(state);
 
                 state->section_entries[state->entries_count].source = intermediary_location;
                 state->section_entries[state->entries_count].dest = destination;
                 state->section_entries[state->entries_count].flags = (length >> 2) | BIOS_MODE_COPY | BIOS_UNIT_WORDS;
-                state->entries_count++;
+                checked_increment_entries_count(state);
             } else {
                 state->section_entries[state->entries_count].source = 0;
                 state->section_entries[state->entries_count].dest = destination;
@@ -240,10 +250,12 @@ static void append_try_compress_section(pack_state_t *state, const void *source,
                 state->copy_entries[state->entries_count].length = result;
                 state->copy_entries[state->entries_count].managed = true;
                 state->copy_entries[state->entries_count].reserve_at_end = compress_mode == COMPRESS_MODE_EWRAM_FINAL ? 32 : 0;
-                state->entries_count++;
+                checked_increment_entries_count(state);
             }
             return;
         } else {
+            if (result < 0 && verbose) printf("-> Section compression error (%d)\n", result);
+            if (result > 0 && verbose) printf("-> Compressed section larger than uncompressed (%d > %d), ignoring\n", result, length);
             free(packed);
         }
     }
@@ -307,7 +319,6 @@ int main(int argc, char **argv) {
         uint32_t branch = *((uint32_t*) &input[0xC0]);
         entrypoint = AGB_EWRAM_START + 0xC8 + ((branch & 0xFFFFFF) << 2);
 
-        if (verbose) printf("Detected .gba file\n");
         if (input_length > AGB_EWRAM_SIZE) {
             fprintf(stderr, "File too large!\n");
             exit(1);
@@ -326,8 +337,6 @@ int main(int argc, char **argv) {
         }
         is_elf = true;
         entrypoint = ehdr->entry;
-
-        if (verbose) printf("Detected .elf file\n");
     }
 
     // === Build image ===
@@ -362,7 +371,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (verbose) printf("Detected %s image\n", is_multiboot ? "multiboot" : "cartridge");
+    if (verbose) printf("Loaded %s %s image\n", is_raw ? ".gba" : ".elf", is_multiboot ? "multiboot" : "cartridge");
 
     // - Write loader
 
@@ -401,7 +410,7 @@ int main(int argc, char **argv) {
             if (!phdr_supports_type(phdr->type)) continue;
 
             if (!phdr->memsz) {
-                if (verbose) printf("Skipping empty program header %d\n", i);
+                if (verbose) printf("Skipping program header %d (empty)\n", i);
                 phdr->type = ELF_PT_PROCESSED;
             }
             if (phdr->filesz > phdr->memsz) {
@@ -410,7 +419,7 @@ int main(int argc, char **argv) {
             }
 
             if (phdr->filesz && !address_supports_8bit_writes(phdr->paddr)) {
-                if (verbose) printf("Processing program header %d\n", i);
+                if (verbose) printf("Processing program header %d (data)\n", i);
                 append_try_compress_section(&state, input + phdr->offset, phdr->paddr, phdr->filesz, 0, compress ? COMPRESS_MODE_VRAM_COPY : 0);
                 phdr->type = ELF_PT_PROCESSED;
             }
@@ -438,7 +447,7 @@ int main(int argc, char **argv) {
                 }
                 continue;
             }
-            if (verbose) printf("Processing program header %d\n", i);
+            if (verbose) printf("Processing program header %d (data)\n", i);
             if (phdr->filesz) {
                 append_try_compress_section(&state, input + phdr->offset, phdr->paddr, phdr->filesz, 0, compress ? COMPRESS_MODE_NORMAL : 0);
             } else {
@@ -462,7 +471,7 @@ int main(int argc, char **argv) {
             if (!phdr_supports_type(phdr->type)) continue;
 
             if (address_is_ewram(phdr->paddr) && !phdr->filesz) {
-                if (verbose) printf("Processing program header %d\n", i);
+                if (verbose) printf("Processing program header %d (bss)\n", i);
                 append_bios_copy_section(&state, NULL, phdr->paddr, phdr->memsz, true);
                 phdr->type = ELF_PT_PROCESSED;
             } else {
@@ -476,7 +485,7 @@ int main(int argc, char **argv) {
     state.section_entries[state.entries_count].source = 0;
     state.section_entries[state.entries_count].dest = entrypoint;
     state.section_entries[state.entries_count].flags = -(((state.entries_count + 1) * sizeof(section_entry_t)) + 4);
-    state.entries_count++;
+    checked_increment_entries_count(&state);
 
     // Prepare data for the appended header.
     uint32_t copy_offset = (is_multiboot ? AGB_EWRAM_START : AGB_ROM_START) + ftell(outf) + 4;
@@ -518,6 +527,12 @@ int main(int argc, char **argv) {
         fseek(outf, 0, SEEK_SET);
         uint32_t branch = 0xEA000000 | ((rom_loader_offset - 8) >> 2);
         checked_fwrite(&branch, 4, outf);
+    }
+
+    if (verbose) {
+        fseek(outf, 0, SEEK_END);
+        if (is_raw) printf("Saved processed image, %d -> %ld bytes\n", input_length, ftell(outf));
+        else printf("Saved processed image, %ld bytes\n", ftell(outf));
     }
 
     free(input);
