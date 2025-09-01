@@ -452,7 +452,7 @@ int main(int argc, char **argv) {
         // Next, copy EWRAM data.
         if (ewram_data_start <= AGB_EWRAM_END) {
             if (verbose) printf("Compressing EWRAM data (%08X - %08X), window = %d bytes\n", ewram_data_start, ewram_data_end, ewram_window_bytes);
-            append_try_compress_section(&state, ewram_data, ewram_data_start, ewram_data_end + 1 - ewram_data_start, ewram_window_bytes, compress ? COMPRESS_MODE_EWRAM_FINAL : 0);
+            append_try_compress_section(&state, ewram_data + ewram_data_start - AGB_EWRAM_START, ewram_data_start, ewram_data_end + 1 - ewram_data_start, ewram_window_bytes, compress ? COMPRESS_MODE_EWRAM_FINAL : 0);
         }
 
         // Next, fill EWRAM areas.
