@@ -388,7 +388,7 @@ int main(int argc, char **argv) {
         phdr->type = ELF_PT_PROCESSED;
     }
 
-    uint32_t ewram_window_bytes = AGB_EWRAM_END + 1 - ewram_data_end;
+    uint32_t ewram_window_bytes = AGB_EWRAM_END + 1 - ewram_data_end - 32;
 
     // Next, copy EWRAM data.
     if (ewram_data_start <= AGB_EWRAM_END) {
