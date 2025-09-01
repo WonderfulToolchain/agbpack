@@ -1,0 +1,52 @@
+name: Build
+
+on: [push, pull_request, release, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  # === Windows (cross-compile via mingw) ===
+  win64:
+    env:
+      SYSROOT: /usr/x86_64-w64-mingw32/sys-root/mingw
+    runs-on: ubuntu-22.04
+    container: fedora:42
+    steps:
+      - name: Install dependencies
+        run: sudo dnf -y install binutils cpp gcc make pkgconf pkgconf-m4 pkgconf-pkg-config zip unzip git mingw64-gcc mingw64-gcc-c++ mingw64-zlib meson
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Configure
+        run: meson setup --buildtype release -Db_lto=true --strip --cross-file .github/mingw-cross.txt build
+      - name: Build
+        run: meson compile -C build
+      - name: Package artifact
+        run: mkdir dist && mkdir dist/doc && cp build/agbpack.exe dist/ && cp LICENSE README.md dist/doc && cp vendor/apultra/LICENSE.zlib.md dist/doc/LICENSE.apultra && cp vendor/apultra/src/libdivsufsort/LICENSE dist/doc/LICENSE.libdivsufsort
+      - name: Archive artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agbpack (Windows)
+          path: dist/*
+
+  # === Linux (Ubuntu 22.04) ===
+  linux64:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Install required dependencies
+        run: sudo apt-get update && sudo apt-get install build-essential pkg-config meson zip unzip
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Configure
+        run: meson setup --buildtype release -Db_lto=true --strip build
+      - name: Build
+        run: meson compile -C build
+      - name: Package artifact
+        run: mkdir dist && mkdir dist/doc && cp build/agbpack dist/ && cp LICENSE README.md dist/doc && cp vendor/apultra/LICENSE.zlib.md dist/doc/LICENSE.apultra && cp vendor/apultra/src/libdivsufsort/LICENSE dist/doc/LICENSE.libdivsufsort
+      - name: Archive artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agbpack (Linux)
+          path: dist/*
