@@ -14,6 +14,8 @@
 #include "crt0_multiboot_bin.h"
 #include "crt0_rom_bin.h"
 
+#define VERSION "0.2.0"
+
 #define AGB_EWRAM_START 0x02000000
 #define AGB_EWRAM_END   0x0203FFFF
 #define AGB_EWRAM_SIZE  0x40000
@@ -108,7 +110,12 @@ static void print_help(int argc, char **argv) {
     printf("\t-0         Disable compression.\n");
     printf("\t-L <path>  Use LZSS compression for VRAM data via external nnpack-lzss.\n");
     printf("\t-h         Print help information.\n");
+    printf("\t-V         Print version information.\n");
     printf("\t-v         Enable verbose logging.\n");
+}
+
+static void print_version(void) {
+    printf("agbpack %s\n", VERSION);
 }
 
 typedef struct __attribute__((packed)) {
@@ -253,7 +260,7 @@ int main(int argc, char **argv) {
 
     bool compress = true;
     int c;
-    while ((c = getopt(argc, argv, "0L:hv")) != -1) switch (c) {
+    while ((c = getopt(argc, argv, "0L:hVv")) != -1) switch (c) {
     case '0':
         compress = false;
         break;
@@ -262,6 +269,9 @@ int main(int argc, char **argv) {
         break;
     case 'h':
         print_help(argc, argv);
+        return 0;
+    case 'V':
+        print_version();
         return 0;
     case 'v':
         verbose = true;
@@ -274,6 +284,7 @@ int main(int argc, char **argv) {
     }
 
     srand(time(NULL));
+    if (verbose) print_version();
 
     // === Process ELF file ===
 
