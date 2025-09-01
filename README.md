@@ -8,7 +8,11 @@ Tool for compressing GBA multiboot images using aPlib.
 
 `agbpack` essentially replaces `objcopy`:
 
-   $ agbpack image.elf image.gba
+    $ objcopy -O binary image.elf image.gba
+
+becomes:
+
+    $ agbpack image.elf image.gba
 
 Note that the resulting image requires header fixing with `wf-gbatool fix`, `gbafix`, or a similar tool.
 
@@ -22,6 +26,12 @@ For best results, adjust the link script and crt0 of your project so that:
 * the GBA header is removed from the ELF image.
 
 `agbpack` supports copying and zeroing arbitrary memory sections, as well as parsing the ELF entrypoint. This allows directly unpacking compressed data to EWRAM and VRAM and, in doing so, creating multiboot programs larger than 256 KiB.
+
+## Limitations
+
+* Only multiboot images are currently supported. For consistency, some support for ROM images is planned in the future.
+* About 1 KiB of space is reserved at the end of IWRAM to store the decompression routine.
+* For best compression results, it is recommended not to use up the entirely of EWRAM - this reduces the size of the compression window. BSS (zero-filled) data does not count towards this limit.
 
 ## License
 

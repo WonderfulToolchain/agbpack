@@ -225,6 +225,7 @@ static void append_try_compress_section(pack_state_t *state, const void *source,
                 state->copy_entries[state->entries_count].source = packed;
                 state->copy_entries[state->entries_count].length = result;
                 state->copy_entries[state->entries_count].managed = true;
+                state->copy_entries[state->entries_count].reserve_at_end = compress_mode == COMPRESS_MODE_EWRAM_FINAL ? 32 : 0;
                 state->entries_count++;
             }
             return;
