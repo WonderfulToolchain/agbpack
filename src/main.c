@@ -22,6 +22,10 @@
 #define AGB_IWRAM_SIZE  0x8000
 #define MAX(a,b) (((a) < (b)) ? (b) : (a))
 
+static bool phdr_supports_type(uint32_t type) {
+    return type == ELF_PT_LOAD || type == ELF_PT_ARM_EXIDX;
+}
+
 static inline bool address_is_ewram(uint32_t address) {
     return address >= AGB_EWRAM_START && address <= AGB_EWRAM_END;
 }
@@ -323,8 +327,8 @@ int main(int argc, char **argv) {
     // First, write areas which don't support 8-bit writes.
     for (int i = 0; i < ehdr->phnum; i++) {
         elf_phdr_t *phdr = (elf_phdr_t*) (input + (ehdr->phoff + i * ehdr->phentsize));
-        if (phdr->type != ELF_PT_LOAD) continue;
         if (phdr->type == ELF_PT_PROCESSED) continue;
+        if (!phdr_supports_type(phdr->type)) continue;
 
         if (!phdr->memsz) {
             if (verbose) printf("Skipping empty program header %d\n", i);
@@ -351,8 +355,9 @@ int main(int argc, char **argv) {
 
     for (int i = 0; i < ehdr->phnum; i++) {
         elf_phdr_t *phdr = (elf_phdr_t*) (input + (ehdr->phoff + i * ehdr->phentsize));
-        if (phdr->type != ELF_PT_LOAD) continue;
         if (phdr->type == ELF_PT_PROCESSED) continue;
+        if (!phdr_supports_type(phdr->type)) continue;
+
         if (address_is_ewram(phdr->paddr)) { 
             if (phdr->filesz) {
                 if (verbose) printf("Appending program header %d to EWRAM data\n", i);
@@ -383,9 +388,10 @@ int main(int argc, char **argv) {
     // Next, fill EWRAM areas.
     for (int i = 0; i < ehdr->phnum; i++) {
         elf_phdr_t *phdr = (elf_phdr_t*) (input + (ehdr->phoff + i * ehdr->phentsize));
-        if (phdr->type != ELF_PT_LOAD) continue;
         if (phdr->type == ELF_PT_PROCESSED) continue;
-        if (address_is_ewram(phdr->paddr) && !phdr->filesz) { 
+        if (!phdr_supports_type(phdr->type)) continue;
+
+        if (address_is_ewram(phdr->paddr) && !phdr->filesz) {
             if (verbose) printf("Processing program header %d\n", i);
             append_bios_copy_section(&state, NULL, phdr->paddr, phdr->memsz, true);
             phdr->type = ELF_PT_PROCESSED;
@@ -428,7 +434,7 @@ int main(int argc, char **argv) {
     checked_fwrite(&command_stream_length, 4, outf);
     checked_fwrite(state.section_entries, state.entries_count * sizeof(section_entry_t), outf);
 
-    uint32_t bytes_at_end = 262144 - ftell(outf);
+    uint32_t bytes_at_end = AGB_EWRAM_SIZE - ftell(outf);
     for (int i = 0; i < state.entries_count; i++) {
         if (state.copy_entries[i].reserve_at_end && state.copy_entries[i].reserve_at_end > bytes_at_end) {
             fprintf(stderr, "Insufficient bytes at end: %d > %d", state.copy_entries[i].reserve_at_end,  bytes_at_end);

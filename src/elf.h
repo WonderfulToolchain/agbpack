@@ -39,6 +39,7 @@ typedef struct __attribute__((packed)) {
 } elf_ehdr_t;
 
 #define ELF_PT_LOAD 1
+#define ELF_PT_ARM_EXIDX 0x70000001
 
 typedef struct __attribute__((packed)) {
     uint32_t type;
