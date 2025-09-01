@@ -25,12 +25,9 @@
 .syntax         unified
 .cpu            arm7tdmi
 
-_header:
 #ifdef MULTIBOOT
+_header:
     b       _start_rom      @ ROM entry point
-#else
-    b       _start
-#endif
 
     @ Logo Data (filled by post-link tool)
     .zero   156
@@ -49,17 +46,10 @@ _header:
     .zero   1               @ Checksum (filled by post-link tool)
     .zero   2               @ Reserved
 
-#ifdef MULTIBOOT
     b       _start          @ Multiboot entry point
     .zero   28
     b       _start          @ JOYBUS entry point
-#else
-    @ Fake multiboot entry point - infinite loop
-    @ Required to pass mGBA's multiboot auto-detect
-    b       .
-#endif
 
-#ifdef MULTIBOOT
 @ If a multiboot image is booted from ROM, copy its contents to RAM.
 _start_rom:
     and         r0, pc, 0xFF000000
@@ -103,6 +93,7 @@ _start:
     @ Initialize stack
     ldr		    sp, =0x3008000
 
+#ifdef MULTIBOOT
     @ Relocate command stream to IWRAM
     adr         r0, _appended_data
     ldm         r0!, {r2}
@@ -127,6 +118,13 @@ _start:
     @ Jump to relocated extraction code
     pop         {r1}
     bx          r1         
+#else
+    @ Point to command stream in ROM
+    adr         r4, _appended_data
+    ldm         r4!, {r0}
+    add         r4, r4, r0
+    add         r4, r4, #4
+#endif
 
     .pool
 
@@ -134,9 +132,11 @@ _start:
 _extract_start:
     b           _extract
 
+#ifdef APLIB
 #include "apack.s"
 
     .pool
+#endif
 
 _extract:
     @ Extraction loop
@@ -146,18 +146,28 @@ _extract:
     @ If source address == 0, treat destination address as jump target
     cmp         r0, 0
     bxeq        r1
+#ifdef APLIB
+#ifdef MULTIBOOT
     @ If bit 30 set, move data first, then use decompression
     tst         r2, #(1 << 30)
     bne         depack_move
+#endif
     @ If bit 31 set, use decompression
     tst         r2, #(1 << 31)
     bne         depack
+#else
+    @ If bit 31 set, use LZSS WRAM decompression
+    tst         r2, #(1 << 31)
+    swine       17 << 16
+#endif
     @ If bit 29 set, use LZSS VRAM decompression
     tst         r2, #(1 << 29)
     swine       18 << 16
     @ Pass to GBA BIOS for copying/filling
     swieq       11 << 16
     b           1b
+#ifdef APLIB
+#ifdef MULTIBOOT
 depack_move:
     bic         r2, r2, #0xF0000000
     add         r0, r0, r2
@@ -173,6 +183,8 @@ depack_move:
 1:
     pop         {r0, r4}
     b           depack
+#endif
+#endif
 
 _appended_data:
 

@@ -22,12 +22,12 @@ vpath %.S $(SRCDIRS)
 all: $(OUTDIR)/crt0_rom.c $(OUTDIR)/crt0_multiboot.c
 
 $(OUTDIR)/crt0_rom.c: crt0.S $(OBJDIR)
-	$(CC) $(ASFLAGS) -c -o $(OBJDIR)/crt0_rom.o $<
+	$(CC) $(ASFLAGS) -DAPLIB -c -o $(OBJDIR)/crt0_rom.o $<
 	$(OBJCOPY) -O binary $(OBJDIR)/crt0_rom.o $(OBJDIR)/crt0_rom.bin
 	wf-bin2c $(OUTDIR) $(OBJDIR)/crt0_rom.bin
 
 $(OUTDIR)/crt0_multiboot.c: crt0.S $(OBJDIR)
-	$(CC) $(ASFLAGS) -DMULTIBOOT -c -o $(OBJDIR)/crt0_multiboot.o $<
+	$(CC) $(ASFLAGS) -DAPLIB -DMULTIBOOT -c -o $(OBJDIR)/crt0_multiboot.o $<
 	$(OBJCOPY) -O binary $(OBJDIR)/crt0_multiboot.o $(OBJDIR)/crt0_multiboot.bin
 	wf-bin2c $(OUTDIR) $(OBJDIR)/crt0_multiboot.bin
 

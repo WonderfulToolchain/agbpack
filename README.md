@@ -1,6 +1,6 @@
 # agbpack
 
-Tool for compressing GBA multiboot images using aPlib.
+Tool for compressing GBA images using aPlib, particularly multiboot images.
 
 ## Usage
 
@@ -18,7 +18,7 @@ Note that the resulting image requires header fixing with `wf-gbatool fix`, `gba
 
 ### Advanced usage
 
-Of course, applying `agbpack` to an otherwise unmodified GBA `.elf` only makes for a smaller `.gba` file - useful for demosceners, not so much for creating larger multiboot programs.
+Of course, applying `agbpack` to an otherwise unmodified GBA `.elf` only makes for a smaller `.gba` file - useful for demosceners, not so much for creating larger programs.
 
 For best results, adjust the link script and crt0 of your project so that:
 
@@ -29,9 +29,9 @@ For best results, adjust the link script and crt0 of your project so that:
 
 ## Limitations
 
-* Only multiboot images are currently supported. For consistency, some support for ROM images is planned in the future.
-* About 1 KiB of space is reserved at the end of IWRAM to store the decompression routine.
-* For best compression results, it is recommended not to use up the entirely of EWRAM - this reduces the size of the compression window. BSS (zero-filled) data does not count towards this limit.
+* For multiboot images:
+  * About 1 KiB of space is reserved at the end of IWRAM to store the decompression routine.
+  * To achieve more optimalcompression results, it is recommended not to use up the entirely of EWRAM - this reduces the size of the compression window. BSS (zero-filled) data does not count towards this limit.
 
 ## License
 
@@ -40,4 +40,4 @@ The `agbpack` compression tool, by itself, is MIT-licensed. It also includes the
 * Unmodified zlib-licensed code from the compressor [aPultra](https://github.com/emmanuel-marty/apultra) by Emmanuel Marty,
 * MIT-licensed code from the library libdivsufsort by Yuta Mori.
 
-THe runtime code appended to executables is zlib-licensed. It also includes the aPlib decompression routine by Dan Weiss, [placed in the public domain](https://github.com/emmanuel-marty/apultra/pull/2). As such, no additional licensing requirements are placed on distribution of binaries created using agbpack.
+The runtime code appended to executables is zlib-licensed. It also includes the aPlib decompression routine by Dan Weiss, [placed in the public domain](https://github.com/emmanuel-marty/apultra/pull/2). As such, no additional licensing requirements are placed on distribution of binaries created using agbpack.

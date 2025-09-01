@@ -20,6 +20,9 @@
 #define AGB_IWRAM_START 0x03000000
 #define AGB_IWRAM_END   0x03007FFF
 #define AGB_IWRAM_SIZE  0x8000
+#define AGB_ROM_START   0x08000000
+#define AGB_ROM_END     0x09FFFFFF
+#define AGB_ROM_SIZE    0x2000000
 #define MAX(a,b) (((a) < (b)) ? (b) : (a))
 
 static bool phdr_supports_type(uint32_t type) {
@@ -289,25 +292,6 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    for (int i = 0; i < ehdr->phnum; i++) {
-        elf_phdr_t *phdr = (elf_phdr_t*) (input + (ehdr->phoff + i * ehdr->phentsize));
-        if (phdr->type >= 0x6ffffff0) {
-            fprintf(stderr, "Unsupported ELF program header type!\n");
-            exit(1);
-        }
-
-        // Skip ROM sections
-        if (phdr->paddr >= 0x08000000) {
-            phdr->type = ELF_PT_PROCESSED;
-            is_multiboot = false;
-        }
-    }
-
-    if (!is_multiboot) {
-        fprintf(stderr, "Non-multiboot images currently not supported!\n");
-        exit(1);
-    }
-
     // === Build image ===
 
     FILE *outf = fopen(argv[optind + 1], "wb");
@@ -316,7 +300,34 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
+    // - Write ROM data (if not multiboot)
+
+    for (int i = 0; i < ehdr->phnum; i++) {
+        elf_phdr_t *phdr = (elf_phdr_t*) (input + (ehdr->phoff + i * ehdr->phentsize));
+            
+        if (phdr->paddr >= AGB_ROM_START && phdr->paddr <= AGB_ROM_END) {
+            if (!phdr_supports_type(phdr->type)) {
+                fprintf(stderr, "Program header %d, which is in ROM, has unsupported type!", i);
+                exit(1);
+            }
+
+            is_multiboot = false;
+
+            if (phdr->filesz) {
+                fseek(outf, phdr->paddr - AGB_ROM_START, SEEK_SET);
+                checked_fwrite(input + phdr->offset, phdr->filesz, outf);
+            }
+
+            phdr->type = ELF_PT_PROCESSED;
+        }
+    }
+
+    if (verbose) printf("Detected %s image\n", is_multiboot ? "multiboot" : "cartridge");
+
     // - Write loader
+
+    fseek(outf, 0, SEEK_END);
+    uint32_t rom_loader_offset = ftell(outf);
 
     const void *crt0_data = is_multiboot ? crt0_multiboot : crt0_rom;
     size_t crt0_size = is_multiboot ? crt0_multiboot_size : crt0_rom_size;
@@ -358,7 +369,7 @@ int main(int argc, char **argv) {
         if (phdr->type == ELF_PT_PROCESSED) continue;
         if (!phdr_supports_type(phdr->type)) continue;
 
-        if (address_is_ewram(phdr->paddr)) { 
+        if (is_multiboot && address_is_ewram(phdr->paddr)) { 
             if (phdr->filesz) {
                 if (verbose) printf("Appending program header %d to EWRAM data\n", i);
                 memcpy(ewram_data + phdr->paddr - AGB_EWRAM_START, input + phdr->offset, phdr->filesz);
@@ -408,7 +419,7 @@ int main(int argc, char **argv) {
     state.entries_count++;
 
     // Prepare data for the appended header.
-    uint32_t copy_offset = AGB_EWRAM_START + ftell(outf) + 4;
+    uint32_t copy_offset = (is_multiboot ? AGB_EWRAM_START : AGB_ROM_START) + ftell(outf) + 4;
     uint32_t rom_data_length = 0;
     for (int i = 0; i < state.entries_count; i++) {
         if (state.copy_entries[i].source) {
@@ -440,6 +451,13 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Insufficient bytes at end: %d > %d", state.copy_entries[i].reserve_at_end,  bytes_at_end);
             exit(1);
         }
+    }
+
+    // Patch entrypoint for ROM image.
+    if (!is_multiboot) {
+        fseek(outf, 0, SEEK_SET);
+        uint32_t branch = 0xEA000000 | ((rom_loader_offset - 8) >> 2);
+        checked_fwrite(&branch, 4, outf);
     }
 
     free(input);
