@@ -288,19 +288,46 @@ int main(int argc, char **argv) {
 
     // === Process ELF file ===
 
+    bool is_raw = false;
+    bool is_elf = false;
     bool is_multiboot = true;
-    uint8_t *input = read_file(argv[optind], NULL);
+    int input_length = 0;
+    uint8_t *input = read_file(argv[optind], &input_length);
+    uint32_t entrypoint;
 
     elf_ehdr_t *ehdr = (elf_ehdr_t*) input;
-    if (ehdr->i_magic != ELF_MAGIC
-        || ehdr->i_class != ELF_ELFCLASS32
-        || ehdr->i_data != ELF_ELFDATA2LSB
-        || ehdr->type != ELF_ET_EXEC
-        || ehdr->machine != ELF_EM_ARM
-        || ehdr->version != ELF_EV_CURRENT)
-    {
-        fprintf(stderr, "Unsupported ELF file!\n");
-        exit(1);
+    if (input_length >= 0xE0 && input[3] == 0xEA && input[0xB2] == 0x96) {
+        // This is probably a .gba file, not a .elf file.
+        is_raw = true;
+
+        if (!(input[0xC2] == 0x00 && input[0xC3] == 0xEA)) {
+            fprintf(stderr, "Not a valid multiboot image!\n");
+            exit(1);
+        }
+        uint32_t branch = *((uint32_t*) &input[0xC0]);
+        entrypoint = AGB_EWRAM_START + 0xC8 + ((branch & 0xFFFFFF) << 2);
+
+        if (verbose) printf("Detected .gba file\n");
+        if (input_length > AGB_EWRAM_SIZE) {
+            fprintf(stderr, "File too large!\n");
+            exit(1);
+        }
+    } else {
+        if (input_length < sizeof(elf_ehdr_t)
+            || ehdr->i_magic != ELF_MAGIC
+            || ehdr->i_class != ELF_ELFCLASS32
+            || ehdr->i_data != ELF_ELFDATA2LSB
+            || ehdr->type != ELF_ET_EXEC
+            || ehdr->machine != ELF_EM_ARM
+            || ehdr->version != ELF_EV_CURRENT)
+        {
+            fprintf(stderr, "Unsupported file!\n");
+            exit(1);
+        }
+        is_elf = true;
+        entrypoint = ehdr->entry;
+
+        if (verbose) printf("Detected .elf file\n");
     }
 
     // === Build image ===
@@ -313,23 +340,25 @@ int main(int argc, char **argv) {
 
     // - Write ROM data (if not multiboot)
 
-    for (int i = 0; i < ehdr->phnum; i++) {
-        elf_phdr_t *phdr = (elf_phdr_t*) (input + (ehdr->phoff + i * ehdr->phentsize));
-            
-        if (phdr->paddr >= AGB_ROM_START && phdr->paddr <= AGB_ROM_END) {
-            if (!phdr_supports_type(phdr->type)) {
-                fprintf(stderr, "Program header %d, which is in ROM, has unsupported type!", i);
-                exit(1);
+    if (is_elf) {
+        for (int i = 0; i < ehdr->phnum; i++) {
+            elf_phdr_t *phdr = (elf_phdr_t*) (input + (ehdr->phoff + i * ehdr->phentsize));
+                
+            if (phdr->paddr >= AGB_ROM_START && phdr->paddr <= AGB_ROM_END) {
+                if (!phdr_supports_type(phdr->type)) {
+                    fprintf(stderr, "Program header %d, which is in ROM, has unsupported type!", i);
+                    exit(1);
+                }
+
+                is_multiboot = false;
+
+                if (phdr->filesz) {
+                    fseek(outf, phdr->paddr - AGB_ROM_START, SEEK_SET);
+                    checked_fwrite(input + phdr->offset, phdr->filesz, outf);
+                }
+
+                phdr->type = ELF_PT_PROCESSED;
             }
-
-            is_multiboot = false;
-
-            if (phdr->filesz) {
-                fseek(outf, phdr->paddr - AGB_ROM_START, SEEK_SET);
-                checked_fwrite(input + phdr->offset, phdr->filesz, outf);
-            }
-
-            phdr->type = ELF_PT_PROCESSED;
         }
     }
 
@@ -344,88 +373,108 @@ int main(int argc, char **argv) {
     size_t crt0_size = is_multiboot ? crt0_multiboot_size : crt0_rom_size;
     checked_fwrite(crt0_data, crt0_size, outf);
 
+    // - Copy logo/header data
+    
+    if (is_raw) {
+        // Copy logo/header data from old to new .gba
+        fseek(outf, 4, SEEK_SET);
+        checked_fwrite(input + 4, 0xC0 - 4, outf);
+        fseek(outf, 0, SEEK_END);
+    }
+
     // - Write data streams
 
-    // First, write areas which don't support 8-bit writes.
-    for (int i = 0; i < ehdr->phnum; i++) {
-        elf_phdr_t *phdr = (elf_phdr_t*) (input + (ehdr->phoff + i * ehdr->phentsize));
-        if (phdr->type == ELF_PT_PROCESSED) continue;
-        if (!phdr_supports_type(phdr->type)) continue;
+    if (is_raw) {
+        // Write just one area.
+        uint32_t ewram_offset = 0xC8;
+        uint32_t ewram_window_bytes = AGB_EWRAM_SIZE - input_length - 32;
 
-        if (!phdr->memsz) {
-            if (verbose) printf("Skipping empty program header %d\n", i);
-            phdr->type = ELF_PT_PROCESSED;
-        }
-        if (phdr->filesz > phdr->memsz) {
-            fprintf(stderr, "Program header %d not supported - filesz > memsz > 0", i);
-            exit(1);
-        }
-
-        if (phdr->filesz && !address_supports_8bit_writes(phdr->paddr)) {
-            if (verbose) printf("Processing program header %d\n", i);
-            append_try_compress_section(&state, input + phdr->offset, phdr->paddr, phdr->filesz, 0, compress ? COMPRESS_MODE_VRAM_COPY : 0);
-            phdr->type = ELF_PT_PROCESSED;
-        }
+        if (verbose) printf("Compressing EWRAM data (%08X - %08X), window = %d bytes\n", AGB_EWRAM_START + ewram_offset, AGB_EWRAM_START + input_length, ewram_window_bytes);
+        append_try_compress_section(&state, input + ewram_offset, AGB_EWRAM_START + ewram_offset, input_length - ewram_offset, ewram_window_bytes, COMPRESS_MODE_EWRAM_FINAL);
     }
 
-    // Next, copy/fill non-EWRAM areas.
-    // Also collect all EWRAM data into one big section.
-    uint8_t ewram_data[AGB_EWRAM_SIZE];
-    uint32_t ewram_data_start = AGB_EWRAM_END + 1;
-    uint32_t ewram_data_end = AGB_EWRAM_START - 1;
-    memset(ewram_data, 0, sizeof(ewram_data));
+    if (is_elf) {
+        // First, write areas which don't support 8-bit writes.
+        for (int i = 0; i < ehdr->phnum; i++) {
+            elf_phdr_t *phdr = (elf_phdr_t*) (input + (ehdr->phoff + i * ehdr->phentsize));
+            if (phdr->type == ELF_PT_PROCESSED) continue;
+            if (!phdr_supports_type(phdr->type)) continue;
 
-    for (int i = 0; i < ehdr->phnum; i++) {
-        elf_phdr_t *phdr = (elf_phdr_t*) (input + (ehdr->phoff + i * ehdr->phentsize));
-        if (phdr->type == ELF_PT_PROCESSED) continue;
-        if (!phdr_supports_type(phdr->type)) continue;
-
-        if (is_multiboot && address_is_ewram(phdr->paddr)) { 
-            if (phdr->filesz) {
-                if (verbose) printf("Appending program header %d to EWRAM data\n", i);
-                memcpy(ewram_data + phdr->paddr - AGB_EWRAM_START, input + phdr->offset, phdr->filesz);
-                if (ewram_data_start > phdr->paddr) ewram_data_start = phdr->paddr;
-                if (ewram_data_end < (phdr->paddr + phdr->filesz - 1)) ewram_data_end = phdr->paddr + phdr->filesz - 1;
+            if (!phdr->memsz) {
+                if (verbose) printf("Skipping empty program header %d\n", i);
                 phdr->type = ELF_PT_PROCESSED;
             }
-            continue;
+            if (phdr->filesz > phdr->memsz) {
+                fprintf(stderr, "Program header %d not supported - filesz > memsz > 0", i);
+                exit(1);
+            }
+
+            if (phdr->filesz && !address_supports_8bit_writes(phdr->paddr)) {
+                if (verbose) printf("Processing program header %d\n", i);
+                append_try_compress_section(&state, input + phdr->offset, phdr->paddr, phdr->filesz, 0, compress ? COMPRESS_MODE_VRAM_COPY : 0);
+                phdr->type = ELF_PT_PROCESSED;
+            }
         }
-        if (verbose) printf("Processing program header %d\n", i);
-        if (phdr->filesz) {
-            append_try_compress_section(&state, input + phdr->offset, phdr->paddr, phdr->filesz, 0, compress ? COMPRESS_MODE_NORMAL : 0);
-        } else {
-            append_bios_copy_section(&state, NULL, phdr->paddr, phdr->memsz, true);
-        }
-        phdr->type = ELF_PT_PROCESSED;
-    }
 
-    uint32_t ewram_window_bytes = AGB_EWRAM_END + 1 - ewram_data_end - 32;
+        // Next, copy/fill non-EWRAM areas.
+        // Also collect all EWRAM data into one big section.
+        uint8_t ewram_data[AGB_EWRAM_SIZE];
+        uint32_t ewram_data_start = AGB_EWRAM_END + 1;
+        uint32_t ewram_data_end = AGB_EWRAM_START - 1;
+        memset(ewram_data, 0, sizeof(ewram_data));
 
-    // Next, copy EWRAM data.
-    if (ewram_data_start <= AGB_EWRAM_END) {
-        if (verbose) printf("Compressing EWRAM data (%08X - %08X), window = %d bytes\n", ewram_data_start, ewram_data_end, ewram_window_bytes);
-        append_try_compress_section(&state, ewram_data, ewram_data_start, ewram_data_end + 1 - ewram_data_start, ewram_window_bytes, compress ? COMPRESS_MODE_EWRAM_FINAL : 0);
-    }
+        for (int i = 0; i < ehdr->phnum; i++) {
+            elf_phdr_t *phdr = (elf_phdr_t*) (input + (ehdr->phoff + i * ehdr->phentsize));
+            if (phdr->type == ELF_PT_PROCESSED) continue;
+            if (!phdr_supports_type(phdr->type)) continue;
 
-    // Next, fill EWRAM areas.
-    for (int i = 0; i < ehdr->phnum; i++) {
-        elf_phdr_t *phdr = (elf_phdr_t*) (input + (ehdr->phoff + i * ehdr->phentsize));
-        if (phdr->type == ELF_PT_PROCESSED) continue;
-        if (!phdr_supports_type(phdr->type)) continue;
-
-        if (address_is_ewram(phdr->paddr) && !phdr->filesz) {
+            if (is_multiboot && address_is_ewram(phdr->paddr)) { 
+                if (phdr->filesz) {
+                    if (verbose) printf("Appending program header %d to EWRAM data\n", i);
+                    memcpy(ewram_data + phdr->paddr - AGB_EWRAM_START, input + phdr->offset, phdr->filesz);
+                    if (ewram_data_start > phdr->paddr) ewram_data_start = phdr->paddr;
+                    if (ewram_data_end < (phdr->paddr + phdr->filesz - 1)) ewram_data_end = phdr->paddr + phdr->filesz - 1;
+                    phdr->type = ELF_PT_PROCESSED;
+                }
+                continue;
+            }
             if (verbose) printf("Processing program header %d\n", i);
-            append_bios_copy_section(&state, NULL, phdr->paddr, phdr->memsz, true);
+            if (phdr->filesz) {
+                append_try_compress_section(&state, input + phdr->offset, phdr->paddr, phdr->filesz, 0, compress ? COMPRESS_MODE_NORMAL : 0);
+            } else {
+                append_bios_copy_section(&state, NULL, phdr->paddr, phdr->memsz, true);
+            }
             phdr->type = ELF_PT_PROCESSED;
-        } else {
-            fprintf(stderr, "Unprocessed program header %d!\n", i);
-            exit(1);
+        }
+
+        uint32_t ewram_window_bytes = AGB_EWRAM_END + 1 - ewram_data_end - 32;
+
+        // Next, copy EWRAM data.
+        if (ewram_data_start <= AGB_EWRAM_END) {
+            if (verbose) printf("Compressing EWRAM data (%08X - %08X), window = %d bytes\n", ewram_data_start, ewram_data_end, ewram_window_bytes);
+            append_try_compress_section(&state, ewram_data, ewram_data_start, ewram_data_end + 1 - ewram_data_start, ewram_window_bytes, compress ? COMPRESS_MODE_EWRAM_FINAL : 0);
+        }
+
+        // Next, fill EWRAM areas.
+        for (int i = 0; i < ehdr->phnum; i++) {
+            elf_phdr_t *phdr = (elf_phdr_t*) (input + (ehdr->phoff + i * ehdr->phentsize));
+            if (phdr->type == ELF_PT_PROCESSED) continue;
+            if (!phdr_supports_type(phdr->type)) continue;
+
+            if (address_is_ewram(phdr->paddr) && !phdr->filesz) {
+                if (verbose) printf("Processing program header %d\n", i);
+                append_bios_copy_section(&state, NULL, phdr->paddr, phdr->memsz, true);
+                phdr->type = ELF_PT_PROCESSED;
+            } else {
+                fprintf(stderr, "Unprocessed program header %d!\n", i);
+                exit(1);
+            }
         }
     }
 
     // Finally, add a branch instruction.
     state.section_entries[state.entries_count].source = 0;
-    state.section_entries[state.entries_count].dest = ehdr->entry;
+    state.section_entries[state.entries_count].dest = entrypoint;
     state.section_entries[state.entries_count].flags = -(((state.entries_count + 1) * sizeof(section_entry_t)) + 4);
     state.entries_count++;
 
