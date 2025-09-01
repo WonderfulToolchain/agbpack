@@ -25,6 +25,9 @@ For best results, adjust the link script and crt0 of your project so that:
 
 ## License
 
-The `agbpack` compression tool, by itself, is MIT-licensed. It also includes unmodified zlib-licensed code from the compressor [aPultra](https://github.) by Emmanuel Marty.
+The `agbpack` compression tool, by itself, is MIT-licensed. It also includes the following additional code:
 
-The licensing status of exported binaries is being worked out.
+* Unmodified zlib-licensed code from the compressor [aPultra](https://github.com/emmanuel-marty/apultra) by Emmanuel Marty,
+* MIT-licensed code from the library libdivsufsort by Yuta Mori.
+
+THe runtime code appended to executables is zlib-licensed. It also includes the aPlib decompression routine by Dan Weiss, [placed in the public domain](https://github.com/emmanuel-marty/apultra/pull/2). As such, no additional licensing requirements are placed on distribution of binaries created using agbpack.
