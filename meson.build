@@ -1,4 +1,4 @@
-project('agbpack', 'c', default_options: 'c_std=gnu11')
+project('agbpack', 'c', default_options: 'c_std=gnu11', version: '0.3.1')
 
 executable('agbpack', [
     'rt/out/bootstrap_multiboot_bin.c',

@@ -14,7 +14,7 @@
 #include "bootstrap_multiboot_bin.h"
 #include "bootstrap_rom_bin.h"
 
-#define VERSION "0.3.0"
+#define VERSION "0.3.1"
 
 #define AGB_EWRAM_START 0x02000000
 #define AGB_EWRAM_END   0x0203FFFF
