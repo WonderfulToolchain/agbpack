@@ -396,10 +396,9 @@ int main(int argc, char **argv) {
     if (is_raw) {
         // Write just one area.
         uint32_t ewram_offset = 0xC8;
-        uint32_t ewram_window_bytes = AGB_EWRAM_SIZE - input_length - 32;
 
-        if (verbose) printf("Compressing EWRAM data (%08X - %08X), window = %d bytes\n", AGB_EWRAM_START + ewram_offset, AGB_EWRAM_START + input_length, ewram_window_bytes);
-        append_try_compress_section(&state, input + ewram_offset, AGB_EWRAM_START + ewram_offset, input_length - ewram_offset, ewram_window_bytes, COMPRESS_MODE_EWRAM_FINAL);
+        if (verbose) printf("Compressing EWRAM data (%08X - %08X)\n", AGB_EWRAM_START + ewram_offset, AGB_EWRAM_START + input_length);
+        append_try_compress_section(&state, input + ewram_offset, AGB_EWRAM_START + ewram_offset, input_length - ewram_offset, 0, COMPRESS_MODE_EWRAM_FINAL);
     }
 
     if (is_elf) {
@@ -456,12 +455,10 @@ int main(int argc, char **argv) {
             phdr->type = ELF_PT_PROCESSED;
         }
 
-        uint32_t ewram_window_bytes = AGB_EWRAM_END + 1 - ewram_data_end - 32;
-
         // Next, copy EWRAM data.
         if (ewram_data_start <= AGB_EWRAM_END) {
-            if (verbose) printf("Compressing EWRAM data (%08X - %08X), window = %d bytes\n", ewram_data_start, ewram_data_end, ewram_window_bytes);
-            append_try_compress_section(&state, ewram_data + ewram_data_start - AGB_EWRAM_START, ewram_data_start, ewram_data_end + 1 - ewram_data_start, ewram_window_bytes, compress ? COMPRESS_MODE_EWRAM_FINAL : 0);
+            if (verbose) printf("Compressing EWRAM data (%08X - %08X)\n", ewram_data_start, ewram_data_end);
+            append_try_compress_section(&state, ewram_data + ewram_data_start - AGB_EWRAM_START, ewram_data_start, ewram_data_end + 1 - ewram_data_start, 0, compress ? COMPRESS_MODE_EWRAM_FINAL : 0);
         }
 
         // Next, fill EWRAM areas.
