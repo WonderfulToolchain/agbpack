@@ -116,6 +116,7 @@ _start:
     add         r4, r4, #4
 #endif
 
+#ifdef MULTIBOOT
     adr         r0, (_stage1 + 1)
     bx		r0
 
@@ -138,9 +139,21 @@ _stage1:
 _stage2:
 
 #ifdef MULTIBOOT
+#ifdef APLIB
      .incbin "build/stage2_multiboot.lzss"
 #else
+     .incbin "build/stage2_multiboot_nopack.lzss"
+#endif
+#else
+#ifdef APLIB
      .incbin "build/stage2_rom.lzss"
+#else
+     .incbin "build/stage2_rom_nopack.lzss"
+#endif
+#endif
+#else
+    @ On ROM, just jump to extraction code directly.
+#include "stage2.S"
 #endif
 
     .align 2

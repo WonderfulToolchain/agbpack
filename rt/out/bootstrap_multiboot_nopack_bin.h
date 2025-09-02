@@ -5,5 +5,5 @@
 #include <stdint.h>
 #include <wonderful.h>
 
-#define bootstrap_rom_size (452)
-extern const uint8_t bootstrap_rom[452];
+#define bootstrap_multiboot_nopack_size (416)
+extern const uint8_t bootstrap_multiboot_nopack[416];

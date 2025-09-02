@@ -12,7 +12,9 @@
 
 #include "libapultra.h"
 #include "bootstrap_multiboot_bin.h"
+#include "bootstrap_multiboot_nopack_bin.h"
 #include "bootstrap_rom_bin.h"
+#include "bootstrap_rom_nopack_bin.h"
 
 #define VERSION "0.3.1"
 
@@ -378,8 +380,8 @@ int main(int argc, char **argv) {
     fseek(outf, 0, SEEK_END);
     uint32_t rom_loader_offset = ftell(outf);
 
-    const void *bootstrap_data = is_multiboot ? bootstrap_multiboot : bootstrap_rom;
-    size_t bootstrap_size = is_multiboot ? bootstrap_multiboot_size : bootstrap_rom_size;
+    const void *bootstrap_data = is_multiboot ? (compress ? bootstrap_multiboot : bootstrap_multiboot_nopack) : (compress ? bootstrap_rom : bootstrap_rom_nopack);
+    size_t bootstrap_size = is_multiboot ? (compress ? bootstrap_multiboot_size : bootstrap_multiboot_nopack_size) : (compress ? bootstrap_rom_size : bootstrap_rom_nopack_size);
     checked_fwrite(bootstrap_data, bootstrap_size, outf);
 
     // - Copy logo/header data
