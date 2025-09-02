@@ -22,6 +22,10 @@
  * Modified for the Wonderful toolchain.
  */
 
+#define STACK_ADDR 0x3008000
+#define STAGE2_ADDR 0x3007DC0
+#define REG_IME 0x4000208
+
 .syntax         unified
 .cpu            arm7tdmi
 
@@ -91,7 +95,7 @@ _start:
     str         r0, [r0]
 
     @ Initialize stack
-    ldr		    sp, =0x3008000
+    ldr		    sp, =#STACK_ADDR
 
 #ifdef MULTIBOOT
     @ Relocate command stream to IWRAM
@@ -99,25 +103,11 @@ _start:
     ldm         r0!, {r2}
     add         r0, r0, r2
     ldm         r0!, {r2}
-    sub         r1, sp, #0x40
+    ldr		r1, =#STAGE2_ADDR
     sub         r1, r1, r2, lsl #2
-    orr		    r2, r2, #(1 << 26)
+    orr 	r2, r2, #(1 << 26)
     mov         r4, r1
     swi         11 << 16
-
-    @ Relocate extraction code to IWRAM
-    adr         r0, _extract_start
-    adr         r2, _appended_data
-    sub         r2, r2, r0
-    sub         r1, r4, r2
-    mov         r2, r2, lsr #2
-    orr		    r2, r2, #(1 << 26)
-    push        {r1}
-    swi         11 << 16
-
-    @ Jump to relocated extraction code
-    pop         {r1}
-    bx          r1         
 #else
     @ Point to command stream in ROM
     adr         r4, _appended_data
@@ -126,66 +116,32 @@ _start:
     add         r4, r4, #4
 #endif
 
+    adr         r0, (_stage1 + 1)
+    bx		r0
+
+    .thumb
+_stage1:
+
+    @ Extract stage2 code to IWRAM
+    adr         r0, _stage2
+    ldr		r1, =#STAGE2_ADDR
+    push        {r1, r4}
+    swi		17
+
+    @ Jump to relocated extraction code
+    pop        {r1, r4}
+    bx          r1
+
     .pool
 
-    @ r4 - command stream address
-_extract_start:
-    b           _extract
+    .align 2
+_stage2:
 
-#ifdef APLIB
-#include "apack.s"
-
-    .pool
-#endif
-
-_extract:
-    @ Extraction loop
-1:
-    @ Source address, Destination address, Length/Flags
-    ldm         r4!, {r0, r1, r2}
-    @ If source address == 0, treat destination address as jump target
-    cmp         r0, 0
-    bxeq        r1
-#ifdef APLIB
 #ifdef MULTIBOOT
-    @ If bit 30 set, move data first, then use decompression
-    tst         r2, #(1 << 30)
-    bne         depack_move
-#endif
-    @ If bit 31 set, use decompression
-    tst         r2, #(1 << 31)
-    bne         depack
+     .incbin "build/stage2_multiboot.lzss"
 #else
-    @ If bit 31 set, use LZSS WRAM decompression
-    tst         r2, #(1 << 31)
-    swine       17 << 16
-#endif
-    @ If bit 29 set, use LZSS VRAM decompression
-    tst         r2, #(1 << 29)
-    swine       18 << 16
-    @ Pass to GBA BIOS for copying/filling
-    swieq       11 << 16
-    b           1b
-#ifdef APLIB
-#ifdef MULTIBOOT
-depack_move:
-    bic         r2, r2, #0xF0000000
-    add         r0, r0, r2
-    mov         r3, #0x2040000
-    sub         r2, r3, r2
-    push        {r2, r4}
-1:
-    cmp         r2, r3
-    bhs         1f
-    ldmdb       r0!, {r4, r5, r6, r7, r8, r9, r10, r11}
-    stmdb       r3!, {r4, r5, r6, r7, r8, r9, r10, r11}
-    b           1b
-1:
-    pop         {r0, r4}
-    b           depack
-#endif
+     .incbin "build/stage2_rom.lzss"
 #endif
 
+    .align 2
 _appended_data:
-
-.equiv          REG_IME,        0x04000208

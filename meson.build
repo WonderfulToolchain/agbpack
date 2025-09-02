@@ -1,8 +1,8 @@
 project('agbpack', 'c', default_options: 'c_std=gnu11')
 
 executable('agbpack', [
-    'rt/out/crt0_multiboot_bin.c',
-    'rt/out/crt0_rom_bin.c',
+    'rt/out/bootstrap_multiboot_bin.c',
+    'rt/out/bootstrap_rom_bin.c',
     'src/main.c',
     'vendor/apultra/src/expand.c',
     'vendor/apultra/src/matchfinder.c',

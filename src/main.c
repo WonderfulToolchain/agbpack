@@ -11,8 +11,8 @@
 #endif
 
 #include "libapultra.h"
-#include "crt0_multiboot_bin.h"
-#include "crt0_rom_bin.h"
+#include "bootstrap_multiboot_bin.h"
+#include "bootstrap_rom_bin.h"
 
 #define VERSION "0.3.0"
 
@@ -378,9 +378,9 @@ int main(int argc, char **argv) {
     fseek(outf, 0, SEEK_END);
     uint32_t rom_loader_offset = ftell(outf);
 
-    const void *crt0_data = is_multiboot ? crt0_multiboot : crt0_rom;
-    size_t crt0_size = is_multiboot ? crt0_multiboot_size : crt0_rom_size;
-    checked_fwrite(crt0_data, crt0_size, outf);
+    const void *bootstrap_data = is_multiboot ? bootstrap_multiboot : bootstrap_rom;
+    size_t bootstrap_size = is_multiboot ? bootstrap_multiboot_size : bootstrap_rom_size;
+    checked_fwrite(bootstrap_data, bootstrap_size, outf);
 
     // - Copy logo/header data
     
